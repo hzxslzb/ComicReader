@@ -7,7 +7,7 @@
 
 ComicReader 将漫画柜移动站的搜索、分类与章节内容呈现在原生界面中，不加载网页广告或执行远程 JavaScript。米白与松绿的浅色主题、深墨夜间主题，让手机外屏与展开大屏都能舒适阅读。
 
-**当前版本：1.3.2** · [下载与更新](https://github.com/hzxslzb/ComicReader/releases/latest) · [更新日志](CHANGELOG.md) · [1.3.2 发布公告](docs/releases/v1.3.2.md) · [测试记录](TESTING.md)
+**当前版本：1.3.2** · [下载与更新](https://github.com/hzxslzb/ComicReader/releases/latest) · [更新日志](CHANGELOG.md) · [1.3.2 发布公告](docs/releases/v1.3.2.md) · [测试记录](TESTING.md) · [完整技术文档](Doc/README.md)
 
 ## 下载与安装
 
@@ -105,6 +105,16 @@ Debug APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
 设备测试会更改模拟器显示尺寸、网络开关和测试应用状态，部分流程依赖真实数据源。1.3.2 已通过 28 项 JVM 测试，8 项不同设备用例分批验证通过；Lint 为 0 errors、15 项既有 warnings。测试范围和限制见 [TESTING.md](TESTING.md)。
 
+## 技术文档
+
+完整文档统一放在顶层 [Doc/](Doc/README.md)，包含 15 篇专题，按当前 1.3.2 代码说明架构、用户功能和实现细节。
+
+- 接手开发：[系统架构](Doc/02-系统架构.md)、[源码导航](Doc/03-源码导航与状态管理.md)、[数据模型](Doc/09-数据模型与持久化.md)。
+- 阅读与下载：[阅读器手势](Doc/06-阅读器与手势实现.md)、[预加载与缓存](Doc/07-预加载缓存与网络策略.md)、[下载与离线](Doc/08-下载与离线阅读.md)。
+- 维护发布：[构建与发布](Doc/12-开发构建与发布.md)、[测试与验收](Doc/13-测试体系与验收.md)、[故障排查](Doc/14-故障排查与维护手册.md)。
+
+文档附有可编辑架构图和本地校验工具：`python3 Doc/tools/check_docs.py`。
+
 ## 项目结构
 
 ```text
@@ -112,11 +122,12 @@ app/src/main/          应用代码、Android 清单与资源
 app/src/test/          JVM 测试与 HTML 解析样本
 app/src/androidTest/   阅读、下载、缩放、折叠与数据库设备测试
 assets/branding/      图标原稿与生成说明
-docs/                 实现说明、截图与发布公告
+Doc/                  完整技术文档、可编辑架构图与文档校验工具
+docs/                 历史实现概览、截图与发布公告
 gradle/               Gradle Wrapper
 ```
 
-主要实现：Kotlin + Jetpack Compose + Material 3；OkHttp 请求、Jsoup 解析、Coil 图片加载；SQLite 保存收藏、章节进度和下载任务，SharedPreferences 保存偏好。具体模块职责见 [实现说明](docs/IMPLEMENTATION.md)。
+主要实现：Kotlin + Jetpack Compose + Material 3；OkHttp 请求、Jsoup 解析、Coil 图片加载；SQLite 保存收藏、章节进度和下载任务，SharedPreferences 保存偏好。详细说明见 [技术文档中心](Doc/README.md)；原有 [实现概览](docs/IMPLEMENTATION.md) 保留作为简版入口。
 
 ## 反馈与致谢
 
