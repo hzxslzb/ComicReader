@@ -38,6 +38,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -48,7 +49,7 @@ import kotlinx.coroutines.launch
     DisposableEffect(Unit) { activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);onDispose { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } }
     if(p==null) {
         Column {
-            IconButton({ vm.back() }) { Icon(Icons.Outlined.ArrowBack,"返回") }
+            if(vm.readerChrome) IconButton({ vm.back() }) { Icon(Icons.Outlined.ArrowBack,"返回") }
             if(vm.readerLoading) Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) { Column(horizontalAlignment=Alignment.CenterHorizontally) { CircularProgressIndicator(Modifier.size(30.dp),strokeWidth=2.dp);Spacer(Modifier.height(20.dp));Text("正在翻开 ${vm.activeChapter?.title.orEmpty()}",color=MaterialTheme.colorScheme.onSurfaceVariant) } }
             else ErrorPanel(vm.readerError ?: "章节暂时不可用") { vm.read(book,vm.activeChapter) }
         }
@@ -58,7 +59,7 @@ import kotlinx.coroutines.launch
 }
 
 @Composable private fun ReaderContent(vm: AppViewModel,book: Manga,p: ChapterPages,revision: Int) {
-    var chrome by rememberSaveable { mutableStateOf(true) }
+    val chrome=vm.readerChrome
     var zoomAmount by remember { mutableFloatStateOf(1f) }
     var zoomReset by remember { mutableIntStateOf(0) }
     var showChapters by rememberSaveable { mutableStateOf(false) }
@@ -95,7 +96,7 @@ import kotlinx.coroutines.launch
         }
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).testTag(if(dual) "reader-dual" else "reader-single")) {
-        if(chrome) Surface(color=MaterialTheme.colorScheme.surface) {
+        if(chrome) Surface(color=MaterialTheme.colorScheme.surface,modifier=Modifier.testTag("reader-controls")) {
             Row(Modifier.fillMaxWidth().height(if(pane.shortHeight) 48.dp else 62.dp).padding(end=8.dp),verticalAlignment=Alignment.CenterVertically) {
                 IconButton({ save();vm.back() }) { Icon(Icons.Outlined.ArrowBack,"返回漫画详情") }
                 Column(Modifier.weight(1f)) {
@@ -108,7 +109,7 @@ import kotlinx.coroutines.launch
         }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("reader-viewport"),contentAlignment=Alignment.Center) {
             key(vertical,dual) {
-                ReaderViewport(vm,p,vertical,dual,jumpRequest,zoomReset,{ zoomAmount=it },{ jumpRequest=null },{ chrome=!chrome })
+                ReaderViewport(vm,p,vertical,dual,jumpRequest,zoomReset,{ zoomAmount=it },{ jumpRequest=null },{ vm.readerChrome=!vm.readerChrome })
             }
 
         }
@@ -125,7 +126,7 @@ import kotlinx.coroutines.launch
                 }
             }
         }
-        if(chrome) Surface(color=MaterialTheme.colorScheme.surface) {
+        if(chrome) Surface(color=MaterialTheme.colorScheme.surface,modifier=Modifier.testTag("reader-controls")) {
             if(pane.shortHeight && pane.width>=600.dp) Row(Modifier.fillMaxWidth().padding(horizontal=18.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { progressControl() };Spacer(Modifier.width(24.dp));Box(Modifier.width(310.dp)) { chapterButtons() }
             } else Box(Modifier.fillMaxWidth(),contentAlignment=Alignment.Center) {
@@ -272,7 +273,7 @@ import kotlinx.coroutines.launch
     var ratio by remember { mutableFloatStateOf(.70f) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
-    var width by remember { mutableIntStateOf(1) };var height by remember { mutableIntStateOf(1) }
+    var width by remember { mutableIntStateOf(0) };var height by remember { mutableIntStateOf(1) }
     val transform=rememberTransformableState { zoom,pan,_ ->
         scale=(scale*zoom).coerceIn(1f,4f)
         offset=if(scale==1f) Offset.Zero else Offset((offset.x+pan.x).coerceIn(-width*(scale-1)/2,width*(scale-1)/2),(offset.y+pan.y).coerceIn(-height*(scale-1)/2,height*(scale-1)/2))
@@ -280,18 +281,29 @@ import kotlinx.coroutines.launch
     }
     DisposableEffect(Unit) { onDispose { onZoom(1f) } }
     LaunchedEffect(zoomReset) { scale=1f;offset=Offset.Zero;onZoom(1f) }
-    val decodeWidth=if(vertical) 2400 else width.coerceIn(640,2400)
-    val request=remember(p,index,retry,decodeWidth) { ReaderImages.request(vm.app,p,index,decodeWidth,retry) }
+    var decodeWidth by remember { mutableIntStateOf(0) }
+    LaunchedEffect(width) {
+        if(width>0) {
+            val target=ReaderDecodeSize.width(width)
+            if(decodeWidth!=0 && target!=decodeWidth) delay(180)
+            decodeWidth=target
+        }
+    }
+    var ready by remember(p,index) { mutableStateOf(false) }
+    LaunchedEffect(load) {
+        if(load) { vm.awaitPreloadedImage(p,index);ready=true } else ready=false
+    }
+    val request=remember(p,index,retry,decodeWidth) { ReaderImages.request(vm.app,p,index,decodeWidth.coerceAtLeast(640),retry) }
     Box(Modifier.testTag("page-$index").semantics { stateDescription=if(error) "error" else if(loading) "loading" else "loaded" }.fillMaxWidth().then(if(vertical) Modifier.aspectRatio(ratio) else Modifier.fillMaxHeight()).clip(RoundedCornerShape(0.dp)).onSizeChanged { width=it.width;height=it.height }
         .then(if(vertical) Modifier else Modifier.pointerInput(Unit) { detectTapGestures(onTap={ onTap() },onDoubleTap={ scale=if(scale>1f)1f else 2.5f;offset=Offset.Zero;onZoom(scale) }) }
             .transformable(transform,canPan={ scale>1f })),contentAlignment=Alignment.Center) {
         // Offscreen Compose items must not bypass the explicit preload/network policy.
-        if(load) AsyncImage(request,"第 ${index+1} 页",Modifier.fillMaxSize().graphicsLayer { scaleX=scale;scaleY=scale;translationX=offset.x;translationY=offset.y },contentScale=if(vertical) ContentScale.FillWidth else ContentScale.Fit,onSuccess={ result ->
+        if(load && ready && decodeWidth>0) AsyncImage(request,"第 ${index+1} 页",Modifier.fillMaxSize().graphicsLayer { scaleX=scale;scaleY=scale;translationX=offset.x;translationY=offset.y },contentScale=if(vertical) ContentScale.FillWidth else ContentScale.Fit,onSuccess={ result ->
             val d=result.result.drawable
             if(d.intrinsicWidth>0 && d.intrinsicHeight>0) ratio=(d.intrinsicWidth.toFloat()/d.intrinsicHeight).coerceAtLeast(.05f)
             loading=false;error=false
         },onError={ loading=false;error=true })
-        if(loading) Column(horizontalAlignment=Alignment.CenterHorizontally) { CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp);Spacer(Modifier.height(12.dp));Text("第 ${index+1} 页",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        if(loading && load) Column(horizontalAlignment=Alignment.CenterHorizontally) { CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp);Spacer(Modifier.height(12.dp));Text("第 ${index+1} 页",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(error) Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.padding(24.dp)) {
             Icon(Icons.Outlined.BrokenImage,null,Modifier.size(32.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp));Text("第 ${index+1} 页暂未加载",style=MaterialTheme.typography.bodyMedium)

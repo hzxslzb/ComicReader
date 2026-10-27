@@ -1,3 +1,4 @@
+@file:OptIn(coil.annotation.ExperimentalCoilApi::class)
 package com.arnolee.moye
 
 import android.app.Application
@@ -15,6 +16,8 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
     var readingMode by mutableStateOf(prefs.getString("readingMode","vertical")!!)
     var dualPage by mutableStateOf(prefs.getBoolean("dualPage",true))
     var readerPage by mutableIntStateOf(0)
+    var readerChrome by mutableStateOf(true)
+    private var readerVisible=false
     fun updateDualPage(value: Boolean) { dualPage=value;prefs.edit().putBoolean("dualPage",value).apply() }
     fun recordPage(p: ChapterPages,index: Int) {
         if(activeChapter?.id!=p.chapter.id || selected?.id!=p.mangaId) return
@@ -47,6 +50,35 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
     private var readerGeneration=0
     private var preloadJob: Job?=null
     private var preloadKey: String?=null
+    private var preloadChapterKey: String?=null
+    private var preloadNext: ChapterPages?=null
+    private data class ImagePage(val pages: ChapterPages,val index: Int)
+    private val imagePreloader=ReaderImagePreloader<ImagePage>(viewModelScope,
+        { ReaderImages.key(it.pages,it.index) }, { image ->
+            checkPreloadPolicy()
+            val p=image.pages;val index=image.index
+            if(!store.available(p.mangaId,p.chapter.id,index)) {
+                val cached=withContext(Dispatchers.IO) {
+                    app.imageLoader.diskCache?.openSnapshot(ReaderImages.key(p,index))?.use { true } ?: false
+                }
+                checkPreloadPolicy()
+                if(!cached) app.imageLoader.execute(ReaderImages.request(app,p,index,1,preload=true))
+            }
+        })
+    suspend fun awaitPreloadedImage(p: ChapterPages,index: Int) = imagePreloader.awaitExisting(ReaderImages.key(p,index))
+    fun readerVisibility(visible: Boolean) {
+        if(readerVisible==visible) return
+        readerVisible=visible
+        if(visible) restartPreload() else cancelPreload(cancelVisible=true)
+    }
+    private fun checkPreloadPolicy() {
+        if(!readerVisible || screen!="reader" || !preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi()))
+            throw CancellationException("预加载已暂停")
+    }
+    private fun cancelPreload(cancelVisible: Boolean=false) {
+        preloadJob?.cancel();preloadJob=null;preloadKey=null;preloadChapterKey=null;preloadNext=null
+        imagePreloader.clear(cancelVisible)
+    }
     private val chapterLoader=ReaderChapterLoader(viewModelScope,
         { id,ch -> app.source.pages(id,ch) },store::manifest,store::putManifest,store::complete)
     var preloadPreferences by mutableStateOf(PreloadPreferences.load(prefs))
@@ -68,49 +100,49 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
         restartPreload()
     }
     private fun restartPreload() {
-        preloadJob?.cancel();preloadKey=null
-        pages?.takeIf { screen=="reader" }?.let { preload(it,readerPage) }
+        cancelPreload()
+        pages?.takeIf { screen=="reader" && readerVisible }?.let { preload(it,readerPage) }
     }
     var message by mutableStateOf<String?>(null)
     private fun stopReader() {
-        readerGeneration++;readerJob?.cancel();preloadJob?.cancel();preloadKey=null;chapterLoader.clear()
+        readerGeneration++;readerJob?.cancel();cancelPreload(cancelVisible=true);chapterLoader.clear()
         readerLoading=false
     }
     private fun preload(p: ChapterPages,index: Int) {
-        if(screen!="reader" || !preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi())) return
+        if(!readerVisible || screen!="reader" || !preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi())) return
         val settings=preloadPreferences
         val key="${p.mangaId}/${p.chapter.id}/$index"
         if(preloadKey==key) return
-        preloadKey=key;preloadJob?.cancel()
-        preloadJob=viewModelScope.launch {
-            fun checkPolicy() {
-                if(!preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi())) throw CancellationException("预加载已暂停")
-            }
-            checkPolicy()
-            // A single speculative image at a time leaves capacity for the visible page.
-            suspend fun image(pages: ChapterPages,page: Int) {
-                checkPolicy()
-                if(store.available(pages.mangaId,pages.chapter.id,page)) return
-                try { app.imageLoader.execute(ReaderImages.request(app,pages,page,1,preload=true)) }
-                catch(e: CancellationException) { throw e }
-                catch(_: Exception) { /* Speculative failures must not become reader errors. */ }
-            }
-            val count=ReaderPreloadWindow.nextChapterCount(index,p.paths.size,settings.pages)
-            val next=p.nextId
-            val nextManifest=if(count>0 && next!=null) async {
-                try {
-                    val chapter=selected?.chapters?.firstOrNull { it.id==next } ?: Chapter(next,"下一章")
-                    checkPolicy()
-                    chapterLoader.get(p.mangaId,chapter)
-                } catch(e: CancellationException) { throw e }
-                catch(_: Exception) { null }
-            } else null
-            ReaderPreloadWindow.following(index,p.paths.size,settings.pages).forEach { image(p,it) }
-            nextManifest?.await()?.let { upcoming ->
-                val start=(store.progress(p.mangaId,upcoming.chapter.id)?.page ?: 0).coerceIn(upcoming.paths.indices)
-                (start until minOf(start+count,upcoming.paths.size)).forEach { image(upcoming,it) }
-            }
+        preloadKey=key
+        val current=ReaderPreloadWindow.following(index,p.paths.size,settings.pages).map { ImagePage(p,it) }
+        val visible=setOf(ReaderImages.key(p,index))
+        val count=ReaderPreloadWindow.nextChapterCount(index,p.paths.size,settings.pages)
+        val next=p.nextId
+        val chapterKey=if(count>0 && next!=null) "${p.mangaId}/$next" else null
+        // Start the replacement waiter before releasing the old one for the same next chapter.
+        val previous=preloadJob
+        val sameChapter=preloadChapterKey==chapterKey && chapterKey!=null
+        if(!sameChapter) previous?.cancel()
+        preloadChapterKey=chapterKey
+        if(!sameChapter) preloadNext=null
+        fun upcomingImages(upcoming: ChapterPages): List<ImagePage> {
+            val start=(store.progress(p.mangaId,upcoming.chapter.id)?.page ?: 0).coerceIn(upcoming.paths.indices)
+            return (start until minOf(start+count,upcoming.paths.size)).map { ImagePage(upcoming,it) }
         }
+        imagePreloader.update(current+(preloadNext?.let(::upcomingImages) ?: emptyList()),visible)
+        preloadJob=if(chapterKey!=null && next!=null) viewModelScope.launch(start=CoroutineStart.UNDISPATCHED) {
+            try {
+                checkPreloadPolicy()
+                val chapter=selected?.chapters?.firstOrNull { it.id==next } ?: Chapter(next,"下一章")
+                val upcoming=chapterLoader.get(p.mangaId,chapter)
+                checkPreloadPolicy()
+                if(preloadKey!=key) return@launch
+                preloadNext=upcoming
+                imagePreloader.update(current+upcomingImages(upcoming),visible)
+            } catch(e: CancellationException) { throw e }
+            catch(_: Exception) { /* Speculation never replaces the current reader with an error. */ }
+        } else null
+        if(sameChapter) previous?.cancel()
     }
     fun setAppearance(value: String) { theme=value;prefs.edit().putString("theme",value).apply() }
     fun setMode(value: String) { readingMode=value;prefs.edit().putString("readingMode",value).apply() }
@@ -146,6 +178,7 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
         }
     }
     fun read(book: Manga,chapter: Chapter?=null) {
+        if(screen!="reader" || selected?.id!=book.id) readerChrome=true
         val generation=++readerGeneration
         readerJob?.cancel();val previousPreload=preloadJob;preloadKey=null
         if(selected?.id!=book.id) chapterLoader.clear()

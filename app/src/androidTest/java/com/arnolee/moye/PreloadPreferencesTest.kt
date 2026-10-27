@@ -2,6 +2,7 @@ package com.arnolee.moye
 
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.lifecycle.Lifecycle
 import org.junit.rules.ExternalResource
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -74,18 +75,24 @@ class PreloadPreferencesTest {
             ui.waitUntil(20_000) { vm.preloadWifi }
             ui.runOnIdle { vm.updatePreload(PreloadPreferences(true,3,true)) }
             ui.waitUntil(5_000) { calls.get()==1 }
+            // A real Activity stop pauses speculative work; resume starts it again.
+            ui.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            ui.waitUntil(10_000) { vm.app.source.client.dispatcher.runningCallsCount()==0 }
+            assertEquals(1,calls.get())
+            ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            ui.waitUntil(10_000) { calls.get()==2 }
             device.executeShellCommand("svc wifi disable")
             ui.waitUntil(20_000) { !vm.preloadWifi && vm.app.source.client.dispatcher.runningCallsCount()==0 }
-            assertEquals(1,calls.get());assertEquals("997701",vm.pages!!.chapter.id);assertNull(vm.readerError)
+            assertEquals(2,calls.get());assertEquals("997701",vm.pages!!.chapter.id);assertNull(vm.readerError)
             device.executeShellCommand("svc wifi enable")
-            ui.waitUntil(20_000) { vm.preloadWifi && calls.get()==2 }
+            ui.waitUntil(20_000) { vm.preloadWifi && calls.get()==3 }
             // Joining from foreground must survive a subsequent preload opt-out.
             ui.runOnIdle { vm.adjacent(true);vm.updatePreload(PreloadPreferences(false,4,true)) }
-            ui.waitForIdle();assertEquals(2,calls.get());assertTrue(vm.readerLoading)
+            ui.waitForIdle();assertEquals(3,calls.get());assertTrue(vm.readerLoading)
             assertEquals(1,vm.app.source.client.dispatcher.runningCallsCount())
             release.countDown()
             ui.waitUntil(5_000) { !vm.readerLoading && vm.pages?.chapter?.id=="997702" }
-            assertNull(vm.readerError);assertEquals(2,calls.get())
+            assertNull(vm.readerError);assertEquals(3,calls.get())
         } finally {
             release.countDown()
             ui.runOnIdle { vm.back();vm.updatePreload(originalSettings) }

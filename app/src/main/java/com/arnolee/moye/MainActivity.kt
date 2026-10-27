@@ -23,6 +23,8 @@ class MainActivity: ComponentActivity() {
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    override fun onStart() { super.onStart();vm.readerVisibility(true) }
+    override fun onStop() { vm.readerVisibility(false);super.onStop() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent);setIntent(intent);handleIntent(intent) }
     private fun handleIntent(intent: Intent?) {
         if(intent?.getBooleanExtra("downloads",false)==true) { vm.tab=2;vm.screen="home" }

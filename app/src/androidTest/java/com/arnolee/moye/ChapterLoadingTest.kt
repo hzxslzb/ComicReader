@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.request.SuccessResult
 import coil.decode.DataSource
+import coil.decode.Decoder
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -54,8 +55,10 @@ class ChapterLoadingTest {
         try {
             ui.runOnIdle { vm.read(book,book.chapters[0]) }
             assertTrue(first.await(5,TimeUnit.SECONDS))
-            ui.runOnIdle { vm.read(book,book.chapters[1]) }
+            ui.runOnIdle { vm.readerChrome=false;vm.read(book,book.chapters[1]) }
             assertTrue(second.await(5,TimeUnit.SECONDS))
+            ui.onNodeWithContentDescription("返回").assertDoesNotExist()
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
             releaseFirst.countDown();assertTrue(firstFinished.await(5,TimeUnit.SECONDS))
             // Wait until the older request has unwound on the main dispatcher.
             ui.waitUntil(5_000) { app.source.client.dispatcher.runningCallsCount()==1 }
@@ -67,6 +70,7 @@ class ChapterLoadingTest {
             release.countDown()
             ui.waitUntil(10_000) { !vm.readerLoading && vm.pages?.chapter?.id=="997603" }
             assertEquals(2,calls.get())
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
         } finally { releaseFirst.countDown();release.countDown();ui.runOnIdle { vm.back() };app.source=original }
     }
     @Test fun fivePreloadedPagesAreReusableAtFullSizeWithoutNetwork()=runBlocking {
@@ -74,7 +78,7 @@ class ChapterLoadingTest {
         val bitmap=Bitmap.createBitmap(800,1200,Bitmap.Config.ARGB_8888)
         val bytes=ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }.toByteArray()
         bitmap.recycle()
-        val calls=AtomicInteger();var offline=false
+        val calls=AtomicInteger();val decodes=AtomicInteger();var offline=false
         val client=OkHttpClient.Builder().addInterceptor { chain ->
             if(offline) throw java.io.IOException("test network disabled")
             calls.incrementAndGet()
@@ -83,20 +87,21 @@ class ChapterLoadingTest {
         }.build()
         val dir=File(app.cacheDir,"preload-test-${System.nanoTime()}")
         val loader=ImageLoader.Builder(app).okHttpClient(client).respectCacheHeaders(false)
+            .components { add(Decoder.Factory { _,_,_ -> decodes.incrementAndGet();null }) }
             .diskCache { DiskCache.Builder().directory(dir).maxSizeBytes(10L*1024*1024).build() }.build()
         val p=ChapterPages("997610",Chapter("997611","预加载"),(0..5).map { "/test-$it.png" },emptyMap(),null,null)
         try {
             for(i in ReaderPreloadWindow.following(0,6)) {
                 assertTrue(loader.execute(ReaderImages.request(app,p,i,1,preload=true)) is SuccessResult)
             }
-            assertEquals(5,calls.get());offline=true
+            assertEquals(5,calls.get());assertEquals("Disk preloads must not use a bitmap decoder",0,decodes.get());offline=true
             for(i in 1..5) {
                 val result=loader.execute(ReaderImages.request(app,p,i,1200,retry=1))
                 assertTrue("Preloaded page $i must render offline",result is SuccessResult)
                 assertEquals(DataSource.DISK,(result as SuccessResult).dataSource)
                 assertTrue(result.drawable.intrinsicWidth>1)
             }
-            assertEquals(5,calls.get())
+            assertEquals(5,calls.get());assertEquals(5,decodes.get())
         } finally { loader.shutdown();dir.deleteRecursively() }
     }
     @Test fun liveEndSwipeLoadsNextChapterAndItsFirstImage() {

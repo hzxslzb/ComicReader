@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Build
+import org.junit.rules.ExternalResource
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.lifecycle.ViewModelProvider
@@ -19,7 +21,12 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class ChapterAdvanceTest {
-    @get:Rule val ui=createAndroidComposeRule<MainActivity>()
+    @get:Rule(order=0) val notificationPermission=object: ExternalResource() {
+        override fun before() {
+            if(Build.VERSION.SDK_INT>=33) device.executeShellCommand("pm grant ${InstrumentationRegistry.getInstrumentation().targetContext.packageName} android.permission.POST_NOTIFICATIONS")
+        }
+    }
+    @get:Rule(order=1) val ui=createAndroidComposeRule<MainActivity>()
     private val device get()=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private lateinit var vm: AppViewModel
     private val book=Manga("991000","独立阅读记录测试",chapters=listOf(Chapter("991001","第一章"),Chapter("991002","第二章")))
@@ -61,7 +68,16 @@ class ChapterAdvanceTest {
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeLeft() };settled(1)
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeLeft() };settled(2)
             shot("01-last-page-hint")
+            ui.onNodeWithTag("page-2").performTouchInput { click() }
+            ui.waitUntil(5_000) { !vm.readerChrome }
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeLeft() };next()
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
+            ui.activityRule.scenario.recreate()
+            ui.runOnIdle { vm=ViewModelProvider(ui.activity)[AppViewModel::class.java] }
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
+            ui.onNodeWithTag("page-0").performTouchInput { click() }
+            ui.waitUntil(5_000) { vm.readerChrome }
             // Last chapter never advances to an unavailable chapter.
             ui.runOnIdle { vm.store.saveProgress(book.id,book.chapters[1],2,3);vm.read(book,book.chapters[1]) }
             ui.waitUntil(10_000) { !vm.readerLoading };ui.waitForIdle()
@@ -69,7 +85,10 @@ class ChapterAdvanceTest {
             ui.waitForIdle();assertEquals("991002",vm.activeChapter!!.id)
             open("rtl",1)
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeRight() };settled(2)
+            ui.runOnIdle { vm.readerChrome=false }
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeRight() };next()
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
+            ui.runOnIdle { vm.readerChrome=true }
             // A pan of an enlarged last page must not turn the chapter.
             open("ltr",2)
             ui.onNodeWithTag("page-2").performTouchInput { doubleClick() }
@@ -86,11 +105,17 @@ class ChapterAdvanceTest {
             ui.waitForIdle();assertEquals("991001",vm.activeChapter!!.id)
             ui.onNodeWithTag("reader-list").performScrollToIndex(3);ui.waitForIdle()
             shot("02-vertical-end")
+            ui.runOnIdle { vm.readerChrome=false }
+            ui.onNodeWithTag("reader-list").performScrollToIndex(3);ui.waitForIdle()
             ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { swipeUp() };next()
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
+            ui.runOnIdle { vm.readerChrome=true }
             device.executeShellCommand("wm size 1968x2184");device.executeShellCommand("wm density 420")
             open("ltr",0,true)
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeLeft() };settled(1)
+            ui.runOnIdle { vm.readerChrome=false }
             ui.onNodeWithTag("reader-pager").performTouchInput { swipeLeft() };next()
+            ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
             // The detail history is scoped to this book and resumes the chosen chapter's own page.
             ui.runOnIdle { vm.back() };ui.waitForIdle()
             ui.runOnIdle { vm.store.saveProgress(book.id,book.chapters[0],1,3);vm.store.saveProgress(book.id,book.chapters[1],2,3) }
