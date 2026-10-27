@@ -1,0 +1,32 @@
+{
+  "environment": "Android 16 / API 36 emulator",
+  "method": "New updater code in a test-only 1.3.3/versionCode 9 bootstrap, then real GitHub 1.3.4 APK downloaded and installed via Android system UI",
+  "bootstrap_published": false,
+  "old_version_code": 9,
+  "new_version_code": 10,
+  "database_version": 1,
+  "table_rows": {
+    "books": 3,
+    "progress": 4,
+    "manifests": 4,
+    "downloads": 3
+  },
+  "preserved_image_files": 7,
+  "existing_preferences_preserved": true,
+  "all_existing_library_rows_preserved": true,
+  "official_apk_sha256": "97ca81d047ee9e7962971a782f1ab6abc830f7174a4833507420f9535aac182b",
+  "signature_unchanged": true,
+  "unknown_source_permission_flow_passed": true,
+  "system_install_confirmation_passed": true,
+  "first_launch_data_preserved": true,
+  "installed_apk_matches_published_asset": true,
+  "offline_resume_verified": {
+    "chapter": 2,
+    "page": 3,
+    "wifi": false,
+    "cellular": false
+  },
+  "fixture": "Emulator library with existing records and two synthetic upgrade-test books",
+  "device_tests_passed": 9,
+  "unit_tests_passed": 43
+}

@@ -19,7 +19,19 @@
   -Pandroid.testInstrumentationRunnerArguments.class=com.arnolee.moye.AppUpdateFlowTest,com.arnolee.moye.ChapterAdvanceTest,com.arnolee.moye.ChapterLoadingTest,com.arnolee.moye.ReaderZoomFlowTest
 ```
 
-正式包沿用 com.arnolee.moye 和原证书（SHA-256：5727eb7043ded618c77075aefa8006c52eea470f89d30bb77b5a7a80d162aa95），数据库版本仍为 1。新增更新偏好及安装文件与原书库隔离。系统安装端到端记录在发布后补充；下列 1.3.3 覆盖升级记录是历史验证，不冒充本版本实测。
+正式包沿用 com.arnolee.moye 和原证书（SHA-256：5727eb7043ded618c77075aefa8006c52eea470f89d30bb77b5a7a80d162aa95），数据库版本仍为 1。新增更新偏好及安装文件与原书库隔离。下列 1.3.3 覆盖升级记录保留为历史验证。
+
+## GitHub 下载与系统安装端到端验证
+
+为了让尚无更新入口的旧版身份能够运行新代码，构建了仅供模拟器使用的引导包：本轮更新器源码，但标记为 1.3.3 / versionCode 9，使用相同正式证书。该引导包没有上传或发布；不能声称旧版 1.3.3 原本具备更新功能。公开安装包仍为真实 1.3.4 / 10。
+
+在保留现有模拟器书库的前提下覆盖安装引导包，点击检查更新，真实 GitHub API 返回 1.3.4；下载公开 Release APK 后通过应用校验，进入“允许此来源安装应用”，授权返回后出现 Android 的更新确认页，点击 Update 完成覆盖安装。安装后的 base.apk SHA-256 与公开附件一致：`97ca81d047ee9e7962971a782f1ab6abc830f7174a4833507420f9535aac182b`。
+
+升级及首次实际打开新版本后核对：3 条漫画、4 条逐章进度、4 条清单、3 条下载任务、原有偏好、7 张离线图片全部保留。测试库包含原有记录及两本合成漫画，不代表用户真实书库。关闭 Wi-Fi 与移动数据后，成功恢复合成漫画第 2 章第 3 页并显示离线图片。
+
+系统安装成功页和应用冷启动期间，UIAutomator 曾返回空根节点；改为等待目标界面出现后继续，实际安装及数据验证通过。未跳过安装确认，也未以 `adb install` 代替这一轮真实更新流程的最终升级。
+
+可复核摘要：[1.3.4 升级验证](Doc/validation/v1.3.4-upgrade.json)。测试引导包、私有数据归档与签名密钥不入库。
 
 本轮未使用实体 Fold7，不宣称真机功耗或系统安装策略已经实测。
 
