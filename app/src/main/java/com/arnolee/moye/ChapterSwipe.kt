@@ -14,19 +14,22 @@ object ChapterSwipe {
         val across=if(vertical) abs(distance.x) else abs(distance.y)
         return along>=threshold && along>across*1.5f
     }
+    fun matches(distance: Offset,vertical: Boolean,rtl: Boolean,threshold: Float,next: Boolean): Boolean =
+        forward(if(next) distance else -distance,vertical,rtl,threshold)
 }
 
-/** Only a NEW, single-finger gesture started at the settled boundary can advance a chapter. */
-suspend fun PointerInputScope.nextChapterSwipe(
+/** Only a NEW, single-finger gesture started at the settled boundary can cross a chapter boundary. */
+suspend fun PointerInputScope.chapterBoundarySwipe(
     vertical: Boolean,
     rtl: ()->Boolean,
-    ready: ()->Boolean,
-    stillAtEnd: ()->Boolean,
-    advance: ()->Unit
+    ready: (Boolean)->Boolean,
+    stillAtBoundary: (Boolean)->Boolean,
+    switchChapter: (Boolean)->Unit
 ) {
     awaitEachGesture {
         val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
-        val armed=ready()
+        val nextArmed=ready(true)
+        val previousArmed=ready(false)
         var single=true
         var end=down.position
         var released=false
@@ -38,6 +41,11 @@ suspend fun PointerInputScope.nextChapterSwipe(
                 if(change.previousPressed && !change.pressed) released=true
             }
         } while(event.changes.any { it.pressed })
-        if(armed && single && released && stillAtEnd() && ChapterSwipe.forward(end-down.position,vertical,rtl(),maxOf(64.dp.toPx(),viewConfiguration.touchSlop*3f))) advance()
+        if(single && released) {
+            val distance=end-down.position
+            val threshold=maxOf(64.dp.toPx(),viewConfiguration.touchSlop*3f)
+            if(nextArmed && stillAtBoundary(true) && ChapterSwipe.matches(distance,vertical,rtl(),threshold,true)) switchChapter(true)
+            else if(previousArmed && stillAtBoundary(false) && ChapterSwipe.matches(distance,vertical,rtl(),threshold,false)) switchChapter(false)
+        }
     }
 }

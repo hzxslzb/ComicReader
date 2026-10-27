@@ -45,6 +45,7 @@ import java.util.Locale
         val snackbar=remember { SnackbarHostState() }
         val homeStates=rememberSaveableStateHolder()
         LaunchedEffect(vm.message) { vm.message?.let { snackbar.showSnackbar(it);vm.message=null } }
+        UpdateDialog(vm.updates,vm.screen=="home")
         BackHandler(vm.screen!="home") { vm.back() }
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val rail=maxWidth>=600.dp
@@ -313,6 +314,7 @@ fun stateLabel(state: String)=when(state) { "complete"->"已下载";"queued"->"�
             Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.padding(18.dp)) { PreloadControls(vm) }
             }
+            UpdateSettings(vm.updates)
             SectionLabel("本地存储")
             Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.padding(18.dp)) {

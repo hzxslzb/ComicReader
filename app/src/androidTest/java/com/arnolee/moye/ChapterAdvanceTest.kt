@@ -48,8 +48,7 @@ class ChapterAdvanceTest {
         val dir=File(ui.activity.getExternalFilesDir(null),"chapter-screenshots").apply { mkdirs() }
         device.takeScreenshot(File(dir,"$name.png"))
     }
-    @Test fun extraSwipeOnlyAtSettledEndAndPerBookHistoryResumes() {
-        ui.runOnIdle { vm=ViewModelProvider(ui.activity)[AppViewModel::class.java];vm.setAppearance("light") }
+    private fun prepareBook() {
         val bitmap=Bitmap.createBitmap(800,2200,Bitmap.Config.ARGB_8888)
         book.chapters.forEachIndexed { ci,ch ->
             val pages=ChapterPages(book.id,ch,(0..2).map { "/local/$ci-$it.png" },emptyMap(),if(ci==1) "991001" else null,if(ci==0) "991002" else null)
@@ -62,6 +61,10 @@ class ChapterAdvanceTest {
             vm.store.putManifest(pages)
         }
         bitmap.recycle();vm.store.putBook(book)
+    }
+    @Test fun extraSwipeOnlyAtSettledEndAndPerBookHistoryResumes() {
+        ui.runOnIdle { vm=ViewModelProvider(ui.activity)[AppViewModel::class.java];vm.setAppearance("light") }
+        prepareBook()
         try {
             device.executeShellCommand("wm size 1080x2520");device.executeShellCommand("wm density 440")
             open("ltr")
@@ -129,6 +132,63 @@ class ChapterAdvanceTest {
             ui.runOnIdle { vm=ViewModelProvider(ui.activity)[AppViewModel::class.java] }
             assertEquals(1,vm.store.progress(book.id,"991001")!!.page)
             assertEquals(2,vm.store.progress(book.id,"991002")!!.page)
+        } finally {
+            device.executeShellCommand("wm size reset");device.executeShellCommand("wm density reset")
+        }
+    }
+    @Test fun extraPreviousSwipeAtSettledStartPreservesChromeAndOpensLastPage() {
+        device.wakeUp();device.executeShellCommand("wm dismiss-keyguard")
+        ui.runOnIdle { vm=ViewModelProvider(ui.activity)[AppViewModel::class.java] }
+        prepareBook()
+        try {
+            for((mode,dual) in listOf("ltr" to false,"rtl" to false,"vertical" to false,"ltr" to true,"rtl" to true)) {
+                device.executeShellCommand(if(dual) "wm size 1968x2184" else "wm size 1080x2520")
+                device.executeShellCommand(if(dual) "wm density 420" else "wm density 440")
+                ui.runOnIdle {
+                    vm.setMode(mode);vm.updateDualPage(dual)
+                    // An old previous-chapter position must not override backwards continuity.
+                    vm.store.saveProgress(book.id,book.chapters[0],0,3)
+                    vm.store.saveProgress(book.id,book.chapters[1],if(mode=="vertical") 0 else 1,3)
+                    vm.read(book,book.chapters[1]);vm.readerChrome=false
+                }
+                ui.waitUntil(10_000) { vm.pages?.chapter?.id=="991002" && !vm.readerLoading }
+                ui.waitForIdle()
+                if(mode=="vertical") {
+                    ui.waitUntil(10_000) { ui.onAllNodes(hasTestTag("page-0") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"loaded")).fetchSemanticsNodes().isNotEmpty() }
+                    ui.onNodeWithTag("reader-vertical-zoom").performTouchInput {
+                        swipe(center,center.copy(y=center.y-150f),300)
+                    }
+                    ui.waitForIdle()
+                    ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { swipeDown() }
+                } else {
+                    ui.onNodeWithTag("reader-pager").performTouchInput { if(mode=="rtl") swipeLeft() else swipeRight() }
+                }
+                // The gesture reaching the start cannot also change the chapter.
+                ui.waitForIdle();assertEquals("991002",vm.activeChapter!!.id);assertEquals(0,vm.readerPage)
+                if(mode=="ltr" && !dual) {
+                    ui.onNodeWithTag("page-0").performTouchInput { doubleClick() }
+                    ui.waitUntil(5_000) { ui.onAllNodesWithTag("reader-reset-zoom").fetchSemanticsNodes().isNotEmpty() }
+                    ui.onNodeWithTag("reader-pager").performTouchInput { swipeRight() }
+                    ui.waitForIdle();assertEquals("991002",vm.activeChapter!!.id)
+                    ui.onNodeWithTag("reader-reset-zoom").performClick();ui.waitForIdle()
+                }
+                if(mode=="vertical") ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { swipeDown() }
+                else ui.onNodeWithTag("reader-pager").performTouchInput { if(mode=="rtl") swipeLeft() else swipeRight() }
+                ui.waitUntil(10_000) { vm.pages?.chapter?.id=="991001" && !vm.readerLoading }
+                ui.waitForIdle();assertEquals(2,vm.readerPage)
+                assertEquals(0,vm.store.progress(book.id,"991002")!!.page)
+                ui.onAllNodesWithTag("reader-controls").assertCountEquals(0)
+                // The very first chapter has no backwards destination.
+                if(mode=="vertical") ui.onNodeWithTag("reader-list").performScrollToIndex(0)
+                else repeat(if(dual) 1 else 2) {
+                    ui.onNodeWithTag("reader-pager").performTouchInput { if(mode=="rtl") swipeLeft() else swipeRight() }
+                    ui.waitForIdle()
+                }
+                ui.waitForIdle()
+                if(mode=="vertical") ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { swipeDown() }
+                else ui.onNodeWithTag("reader-pager").performTouchInput { if(mode=="rtl") swipeLeft() else swipeRight() }
+                ui.waitForIdle();assertEquals("991001",vm.activeChapter!!.id);assertNull(vm.readerError)
+            }
         } finally {
             device.executeShellCommand("wm size reset");device.executeShellCommand("wm density reset")
         }

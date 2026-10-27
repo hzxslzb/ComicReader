@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import coil.imageLoader
 
 class AppViewModel(application: Application): AndroidViewModel(application) {
+    val updates=AppUpdateController(application,viewModelScope)
     val app=application as MoyeApplication
     val store=app.store
     val prefs=application.getSharedPreferences("settings",0)
@@ -16,6 +17,7 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
     var readingMode by mutableStateOf(prefs.getString("readingMode","vertical")!!)
     var dualPage by mutableStateOf(prefs.getBoolean("dualPage",true))
     var readerPage by mutableIntStateOf(0)
+    var readerPendingEndAnchor=false
     var readerChrome by mutableStateOf(true)
     private var readerVisible=false
     fun updateDualPage(value: Boolean) { dualPage=value;prefs.edit().putBoolean("dualPage",value).apply() }
@@ -177,7 +179,7 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
             finally { detailLoading=false }
         }
     }
-    fun read(book: Manga,chapter: Chapter?=null) {
+    fun read(book: Manga,chapter: Chapter?=null,startAtEnd: Boolean=false) {
         if(screen!="reader" || selected?.id!=book.id) readerChrome=true
         val generation=++readerGeneration
         readerJob?.cancel();val previousPreload=preloadJob;preloadKey=null
@@ -191,8 +193,9 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
             try {
                 val p=chapterLoader.get(book.id,target)
                 if(generation!=readerGeneration) return@launch
-                readerStart=(store.progress(book.id,target.id)?.page ?: 0).coerceIn(0,p.paths.lastIndex)
+                readerStart=if(startAtEnd) p.paths.lastIndex else (store.progress(book.id,target.id)?.page ?: 0).coerceIn(0,p.paths.lastIndex)
                 readerPage=readerStart
+                readerPendingEndAnchor=startAtEnd && readingMode=="vertical"
                 pages=p
                 preload(p,readerPage)
             } catch(e: CancellationException) { throw e }
@@ -212,6 +215,13 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
         if(readerLoading || selected?.id!=p.mangaId || activeChapter?.id!=p.chapter.id || p.nextId==null) return
         recordPage(p,p.paths.lastIndex)
         adjacent(true)
+    }
+    fun retreatFromStart(p: ChapterPages) {
+        val book=selected ?: return
+        val id=p.prevId ?: return
+        if(readerLoading || book.id!=p.mangaId || activeChapter?.id!=p.chapter.id) return
+        recordPage(p,0)
+        read(book,book.chapters.firstOrNull { it.id==id } ?: Chapter(id,"上一章"),startAtEnd=true)
     }
     fun enqueue(book: Manga,chapters: List<Chapter>) {
         if(chapters.isEmpty()) return

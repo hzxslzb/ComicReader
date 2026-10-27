@@ -161,7 +161,7 @@ import kotlinx.coroutines.launch
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf("light" to "浅色","dark" to "深色","system" to "跟随系统").forEach { (value,label) -> FilterChip(vm.theme==value,{ vm.setAppearance(value) },{ Text(label) }) } }
             HorizontalDivider(Modifier.padding(vertical=12.dp))
             PreloadControls(vm)
-            Text("轻点图片隐藏工具栏；双击或双指缩放图片。\n上下滚动支持 50%–400% 缩放；放大后可左右拖动，缩小时居中显示；底栏可恢复默认尺寸，不遮挡漫画。\n到达章节末尾后，再按下一页方向滑动一次即可进入下一章。\n预加载可在下方开关、选择 3–5 页，以及仅 Wi-Fi 预加载。\n折叠、展开和旋转时保留当前章节与页码。",Modifier.padding(top=14.dp,bottom=24.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("轻点图片隐藏工具栏；双击或双指缩放图片。\n上下滚动支持 50%–400% 缩放；放大后可左右拖动，缩小时居中显示；底栏可恢复默认尺寸，不遮挡漫画。\n到达章节末尾后，再按下一页方向滑动一次进入下一章；到达章节开头后，再按上一页方向滑动一次返回上一章末页。\n预加载可在下方开关、选择 3–5 页，以及仅 Wi-Fi 预加载。\n折叠、展开和旋转时保留当前章节与页码。",Modifier.padding(top=14.dp,bottom=24.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -190,10 +190,10 @@ import kotlinx.coroutines.launch
     }
     if(vertical) VerticalReaderViewport(vm,p,jump,zoomReset,onZoomChanged,onJumpHandled,onTap) else HorizontalPager(pager,Modifier.fillMaxSize().testTag("reader-pager")
         .pointerInput(p.chapter.id) {
-            nextChapterSwipe(false,{ vm.readingMode=="rtl" },
-                { p.nextId!=null && currentCanScroll && !pager.isScrollInProgress && pager.settledPage==pager.pageCount-1 },
-                { currentCanScroll && pager.currentPage==pager.pageCount-1 },
-                { vm.advanceFromEnd(p) })
+            chapterBoundarySwipe(false,{ vm.readingMode=="rtl" },
+                { next -> (if(next) p.nextId else p.prevId)!=null && currentCanScroll && !pager.isScrollInProgress && pager.settledPage==(if(next) pager.pageCount-1 else 0) },
+                { next -> currentCanScroll && pager.currentPage==(if(next) pager.pageCount-1 else 0) },
+                { next -> if(next) vm.advanceFromEnd(p) else vm.retreatFromStart(p) })
         },reverseLayout=vm.readingMode=="rtl",userScrollEnabled=canScroll,beyondViewportPageCount=0) { group ->
         val indices=ReaderSpreads.pages(group,p.paths.size,dual).let { if(vm.readingMode=="rtl") it.reversed() else it }
         Row(Modifier.fillMaxSize().padding(horizontal=if(dual) 12.dp else 0.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -203,7 +203,9 @@ import kotlinx.coroutines.launch
 }
 
 @Composable private fun VerticalReaderViewport(vm: AppViewModel,p: ChapterPages,jump: Pair<Int,Long>?,zoomReset: Int,onZoomChanged: (Float)->Unit,onJumpHandled: ()->Unit,onTap: ()->Unit) {
-    val list=rememberLazyListState(vm.readerPage.coerceIn(p.paths.indices))
+    val initial=vm.readerPage.coerceIn(p.paths.indices)
+    var restoreEnd by remember { mutableStateOf(vm.readerPendingEndAnchor) }
+    val list=rememberLazyListState(initial)
     val visibleIndices by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.map { it.index }.toSet() } }
     var scale by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -223,7 +225,7 @@ import kotlinx.coroutines.launch
         } else panX=ReaderZoom.pan(panX+pan,widthPx.toFloat(),scale)
         onZoomChanged(scale)
     }
-    LaunchedEffect(Unit) { snapshotFlow { list.firstVisibleItemIndex }.collect { vm.recordPage(p,it.coerceAtMost(p.paths.lastIndex)) } }
+    LaunchedEffect(Unit) { snapshotFlow { list.firstVisibleItemIndex }.collect { if(!restoreEnd) vm.recordPage(p,it.coerceAtMost(p.paths.lastIndex)) } }
     LaunchedEffect(zoomReset) { transform(1f/scale,0f,Offset.Zero) }
     LaunchedEffect(widthPx) { panX=ReaderZoom.pan(panX,widthPx.toFloat(),scale) }
     LaunchedEffect(jump) {
@@ -245,16 +247,21 @@ import kotlinx.coroutines.launch
         .semantics { stateDescription="scale=$scale;pan=$panX" }
         .onSizeChanged { widthPx=it.width }
         .pointerInput(p.chapter.id) {
-            nextChapterSwipe(true,{ false },
-                { p.nextId!=null && atChapterEnd() && !list.isScrollInProgress && anchorJob?.isActive!=true },
-                { atChapterEnd() && anchorJob?.isActive!=true },
-                { vm.advanceFromEnd(p) })
+            chapterBoundarySwipe(true,{ false },
+                { next -> (if(next) p.nextId else p.prevId)!=null && (if(next) atChapterEnd() else !list.canScrollBackward) && !list.isScrollInProgress && anchorJob?.isActive!=true },
+                { next -> (if(next) atChapterEnd() else !list.canScrollBackward) && anchorJob?.isActive!=true },
+                { next -> if(next) vm.advanceFromEnd(p) else vm.retreatFromStart(p) })
         }
         .pointerInput(Unit) { verticalZoomGestures({ scale }) { zoom,pan,focus -> currentTransform(zoom,pan,focus) } }
         .pointerInput(Unit) { detectTapGestures(onTap={ currentTap() },onDoubleTap={ currentTransform((if(!ReaderZoom.isDefault(scale)) 1f else 2.5f)/scale,0f,it) }) },contentAlignment=Alignment.TopCenter) {
         // Real layout scaling increases page height. Vertical scrolling stays enabled at every zoom.
         LazyColumn(state=list,modifier=Modifier.requiredWidth(maxWidth*scale).fillMaxHeight().graphicsLayer { translationX=panX }.testTag("reader-list"),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-            items(p.paths.size,key={ it }) { index -> ComicImage(vm,p,index,true,{}, {},load=index in visibleIndices) }
+            items(p.paths.size,key={ it }) { index -> ComicImage(vm,p,index,true,{}, {},load=index in visibleIndices,onLoaded={
+                if(restoreEnd && index==initial && anchorJob?.isActive!=true) anchorJob=scope.launch {
+                    withFrameNanos { };list.scrollToItem(initial)
+                    restoreEnd=false;vm.readerPendingEndAnchor=false;vm.recordPage(p,initial)
+                }
+            }) }
             item {
                 Column(Modifier.fillMaxWidth().padding(30.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                     Text(if(p.nextId!=null) "再向上滑动一次，进入下一章" else "已到最新章节",style=MaterialTheme.typography.titleMedium)
@@ -265,7 +272,7 @@ import kotlinx.coroutines.launch
     }
 }
 
-@Composable private fun ComicImage(vm: AppViewModel,p: ChapterPages,index: Int,vertical: Boolean,onTap: ()->Unit,onZoom: (Float)->Unit,zoomReset: Int=0,load: Boolean=true) {
+@Composable private fun ComicImage(vm: AppViewModel,p: ChapterPages,index: Int,vertical: Boolean,onTap: ()->Unit,onZoom: (Float)->Unit,zoomReset: Int=0,load: Boolean=true,onLoaded: ()->Unit={}) {
     val context=LocalContext.current
     var retry by remember { mutableIntStateOf(0) }
     var error by remember(retry) { mutableStateOf(false) }
@@ -301,8 +308,8 @@ import kotlinx.coroutines.launch
         if(load && ready && decodeWidth>0) AsyncImage(request,"第 ${index+1} 页",Modifier.fillMaxSize().graphicsLayer { scaleX=scale;scaleY=scale;translationX=offset.x;translationY=offset.y },contentScale=if(vertical) ContentScale.FillWidth else ContentScale.Fit,onSuccess={ result ->
             val d=result.result.drawable
             if(d.intrinsicWidth>0 && d.intrinsicHeight>0) ratio=(d.intrinsicWidth.toFloat()/d.intrinsicHeight).coerceAtLeast(.05f)
-            loading=false;error=false
-        },onError={ loading=false;error=true })
+            loading=false;error=false;onLoaded()
+        },onError={ loading=false;error=true;onLoaded() })
         if(loading && load) Column(horizontalAlignment=Alignment.CenterHorizontally) { CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp);Spacer(Modifier.height(12.dp));Text("第 ${index+1} 页",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(error) Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.padding(24.dp)) {
             Icon(Icons.Outlined.BrokenImage,null,Modifier.size(32.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)

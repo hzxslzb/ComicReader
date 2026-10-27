@@ -1,3 +1,30 @@
+# ComicReader 1.3.4 · 双向切章与应用内更新
+
+日期：2026-10-27。Android 16 / API 36 模拟器，正式版 versionCode 10。
+
+## 本轮执行结果
+
+- 43 项 JVM 测试全部通过：新增 2 项反向手势及 6 项发布元数据／版本比较用例。
+- 9 项设备方法全部通过：ChapterAdvanceTest 2 项、AppUpdateFlowTest 3 项、ChapterLoadingTest 3 项、ReaderZoomFlowTest 1 项。完整仓库现有 15 个设备方法；本轮没有重新运行全部 15 项。
+- LTR、RTL、纵向、LTR 双页和 RTL 双页均验证章首回退；滑回首屏的手势不同时切章，无上一章时不切，放大后的横拖不切章，切回上一章末页时控制框保持隐藏。
+- 纵向初次测试发现末图占位高度导致列表向前回填，已在真实图片高度确定后恢复末页锚点，复测通过；章末原有前进手势回归通过。
+- 更新设置与公告、关闭后重新查看、下载失败重试、自动检查偏好持久化、GitHub 限流提示、摘要和长度检查、低版本拒绝、FileProvider 内容 URI 与路径限制通过。
+- Debug / Release 构建通过；Lint 0 errors、15 项既有 warnings。
+- 真实站点章节请求与预取缓存断网复用回归通过，纵向缩放与复位回归通过。
+
+执行命令：
+
+```sh
+./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleRelease \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.arnolee.moye.AppUpdateFlowTest,com.arnolee.moye.ChapterAdvanceTest,com.arnolee.moye.ChapterLoadingTest,com.arnolee.moye.ReaderZoomFlowTest
+```
+
+正式包沿用 com.arnolee.moye 和原证书（SHA-256：5727eb7043ded618c77075aefa8006c52eea470f89d30bb77b5a7a80d162aa95），数据库版本仍为 1。新增更新偏好及安装文件与原书库隔离。系统安装端到端记录在发布后补充；下列 1.3.3 覆盖升级记录是历史验证，不冒充本版本实测。
+
+本轮未使用实体 Fold7，不宣称真机功耗或系统安装策略已经实测。
+
+---
+
 # ComicReader 1.3.3 · 阅读能耗优化与无打扰切章
 
 日期：2026-10-27（Asia/Shanghai）。Android 16 / API 36 模拟器；正式包 versionCode 9。
