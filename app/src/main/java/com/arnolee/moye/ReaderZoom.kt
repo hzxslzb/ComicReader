@@ -13,7 +13,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 object ReaderZoom {
-    fun scale(value: Float)=value.coerceIn(1f,4f)
+    fun scale(value: Float)=value.coerceIn(.5f,4f)
+    fun isDefault(scale: Float)=abs(scale-1f)<=.01f
     fun pan(value: Float,width: Float,scale: Float): Float {
         val limit=(width*(scale-1f)/2f).coerceAtLeast(0f)
         return value.coerceIn(-limit,limit)

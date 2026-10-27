@@ -4,8 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReaderZoomTest {
-    @Test fun fitAndMaximumNeverExposeHorizontalBlankSpace() {
-        assertEquals(1f,ReaderZoom.scale(.2f),0f)
+    @Test fun minimumMaximumAndPanKeepContentCentered() {
+        assertEquals(.5f,ReaderZoom.scale(.2f),0f)
+        assertEquals(.75f,ReaderZoom.scale(.75f),0f)
+        assertEquals(0f,ReaderZoom.pan(300f,1000f,.5f),0f)
+        assertFalse(ReaderZoom.isDefault(.5f))
+        assertTrue(ReaderZoom.isDefault(1f))
         assertEquals(4f,ReaderZoom.scale(8f),0f)
         assertEquals(0f,ReaderZoom.pan(300f,1000f,1f),0f)
         assertEquals(750f,ReaderZoom.pan(900f,1000f,2.5f),0f)

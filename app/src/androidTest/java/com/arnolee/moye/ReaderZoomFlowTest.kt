@@ -88,6 +88,30 @@ class ReaderZoomFlowTest {
                 assertEquals(page,vm.readerPage)
                 ui.onNodeWithTag("reader-reset-zoom").assertDoesNotExist()
                 shot("02-$name-reset")
+                // Pinch below fit width, scroll while reduced, then reset outside the viewport.
+                ui.onNodeWithTag("reader-list").performScrollToIndex(0)
+                ui.onNodeWithTag("reader-vertical-zoom").performTouchInput {
+                    down(0,Offset(width*.2f,height*.35f));down(1,Offset(width*.8f,height*.35f))
+                    for(step in 1..12) {
+                        moveTo(0,Offset(width*(.2f+step*.018f),height*.35f))
+                        moveTo(1,Offset(width*(.8f-step*.018f),height*.35f))
+                    }
+                    up(0);up(1)
+                }
+                ui.waitUntil(5_000) { scale()<.9f }
+                assertTrue(scale()>=.5f);assertEquals(0f,pan(),.01f);noOverlap()
+                val viewport=ui.onNodeWithTag("reader-vertical-zoom").fetchSemanticsNode().boundsInRoot
+                val listBounds=ui.onNodeWithTag("reader-list").fetchSemanticsNode().boundsInRoot
+                assertTrue(listBounds.width<viewport.width*.9f)
+                assertEquals(viewport.center.x,listBounds.center.x,2f)
+                shot("03-$name-reduced")
+                val reducedStart=scroll()
+                ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { swipeUp() }
+                ui.waitUntil(5_000) { scroll()>reducedStart }
+                val reducedPage=vm.readerPage
+                ui.onNodeWithTag("reader-reset-zoom").performClick()
+                ui.waitUntil(5_000) { scale()==1f }
+                assertEquals(reducedPage,vm.readerPage)
                 // Double tap also zooms, and page jumps keep the enlarged scroll mode usable.
                 ui.onNodeWithTag("reader-vertical-zoom").performTouchInput { doubleClick() }
                 ui.waitUntil(5_000) { scale()>2f }

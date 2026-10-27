@@ -49,34 +49,63 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
     private var preloadKey: String?=null
     private val chapterLoader=ReaderChapterLoader(viewModelScope,
         { id,ch -> app.source.pages(id,ch) },store::manifest,store::putManifest,store::complete)
+    var preloadPreferences by mutableStateOf(PreloadPreferences.load(prefs))
+        private set
+    private val readerNetwork=ReaderNetwork(application)
+    var preloadWifi by mutableStateOf(readerNetwork.isWifi())
+        private set
+    init {
+        viewModelScope.launch {
+            readerNetwork.wifiChanges.collect { wifi ->
+                preloadWifi=wifi
+                restartPreload()
+            }
+        }
+    }
+    fun updatePreload(value: PreloadPreferences) {
+        preloadPreferences=value.copy(pages=value.pages.coerceIn(3,5))
+        preloadPreferences.save(prefs)
+        restartPreload()
+    }
+    private fun restartPreload() {
+        preloadJob?.cancel();preloadKey=null
+        pages?.takeIf { screen=="reader" }?.let { preload(it,readerPage) }
+    }
     var message by mutableStateOf<String?>(null)
     private fun stopReader() {
         readerGeneration++;readerJob?.cancel();preloadJob?.cancel();preloadKey=null;chapterLoader.clear()
         readerLoading=false
     }
     private fun preload(p: ChapterPages,index: Int) {
-        if(screen!="reader") return
+        if(screen!="reader" || !preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi())) return
+        val settings=preloadPreferences
         val key="${p.mangaId}/${p.chapter.id}/$index"
         if(preloadKey==key) return
         preloadKey=key;preloadJob?.cancel()
         preloadJob=viewModelScope.launch {
+            fun checkPolicy() {
+                if(!preloadPreferences.allowed(preloadWifi && readerNetwork.isWifi())) throw CancellationException("预加载已暂停")
+            }
+            checkPolicy()
             // A single speculative image at a time leaves capacity for the visible page.
             suspend fun image(pages: ChapterPages,page: Int) {
+                checkPolicy()
                 if(store.available(pages.mangaId,pages.chapter.id,page)) return
                 try { app.imageLoader.execute(ReaderImages.request(app,pages,page,1,preload=true)) }
                 catch(e: CancellationException) { throw e }
                 catch(_: Exception) { /* Speculative failures must not become reader errors. */ }
             }
-            val count=ReaderPreloadWindow.nextChapterCount(index,p.paths.size)
+            val count=ReaderPreloadWindow.nextChapterCount(index,p.paths.size,settings.pages)
             val next=p.nextId
             val nextManifest=if(count>0 && next!=null) async {
                 try {
                     val chapter=selected?.chapters?.firstOrNull { it.id==next } ?: Chapter(next,"下一章")
+                    checkPolicy()
                     chapterLoader.get(p.mangaId,chapter)
                 } catch(e: CancellationException) { throw e }
                 catch(_: Exception) { null }
             } else null
-            ReaderPreloadWindow.following(index,p.paths.size).forEach { image(p,it) }
+            ReaderPreloadWindow.following(index,p.paths.size,settings.pages).forEach { image(p,it) }
             nextManifest?.await()?.let { upcoming ->
                 val start=(store.progress(p.mangaId,upcoming.chapter.id)?.page ?: 0).coerceIn(upcoming.paths.indices)
                 (start until minOf(start+count,upcoming.paths.size)).forEach { image(upcoming,it) }
@@ -118,7 +147,7 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
     }
     fun read(book: Manga,chapter: Chapter?=null) {
         val generation=++readerGeneration
-        readerJob?.cancel();preloadJob?.cancel();preloadKey=null
+        readerJob?.cancel();val previousPreload=preloadJob;preloadKey=null
         if(selected?.id!=book.id) chapterLoader.clear()
         selected=book;store.putBook(book)
         val last=store.progress(book.id)
@@ -137,6 +166,8 @@ class AppViewModel(application: Application): AndroidViewModel(application) {
             catch(e: Exception) { if(generation==readerGeneration) readerError=e.localizedMessage ?: "章节加载失败，请重试" }
             finally { if(generation==readerGeneration) readerLoading=false }
         }
+        // Join the requested manifest before releasing the speculative waiter.
+        previousPreload?.cancel()
     }
     fun adjacent(next: Boolean) {
         val p=pages ?: return;val book=selected ?: return

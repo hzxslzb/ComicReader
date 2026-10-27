@@ -309,6 +309,10 @@ fun stateLabel(state: String)=when(state) { "complete"->"已下载";"queued"->"�
                 Column(Modifier.weight(1f)) { Text("宽屏自动双页",style=MaterialTheme.typography.titleMedium);Text("展开或横屏时，翻页模式并排显示两页",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant) }
                 Switch(vm.dualPage,{ vm.updateDualPage(it) })
             }
+            SectionLabel("阅读预加载")
+            Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surfaceContainerLow) {
+                Column(Modifier.padding(18.dp)) { PreloadControls(vm) }
+            }
             SectionLabel("本地存储")
             Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column(Modifier.padding(18.dp)) {
@@ -324,5 +328,40 @@ fun stateLabel(state: String)=when(state) { "complete"->"已下载";"queued"->"�
                 Spacer(Modifier.height(10.dp));Text("数据源：漫画柜 · 本地保存书架与阅读历史",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+
+@Composable fun PreloadControls(vm: AppViewModel) {
+    val settings=vm.preloadPreferences
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("预加载",style=MaterialTheme.typography.titleMedium)
+                Text("提前准备后续图片，减少翻页等待",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(settings.enabled,{ vm.updatePreload(settings.copy(enabled=it)) },modifier=Modifier.testTag("preload-enabled"))
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("提前加载页数",style=MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            (3..5).forEach { count ->
+                FilterChip(settings.pages==count,{ vm.updatePreload(settings.copy(pages=count)) },
+                    { Text("$count 页") },enabled=settings.enabled,modifier=Modifier.testTag("preload-pages-$count"))
+            }
+        }
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("仅 Wi-Fi 下预加载")
+                Text("移动网络仍可正常阅读当前页",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(settings.wifiOnly,{ vm.updatePreload(settings.copy(wifiOnly=it)) },enabled=settings.enabled,modifier=Modifier.testTag("preload-wifi"))
+        }
+        Text(when {
+            !settings.enabled -> "预加载已关闭，已缓存图片仍可使用。"
+            settings.wifiOnly && !vm.preloadWifi -> "等待 Wi-Fi 连接后预加载；临时缓存不计入离线下载。"
+            settings.wifiOnly -> "Wi-Fi 下预加载后续 ${settings.pages} 页，接近章末时包含下一章。"
+            else -> "预加载后续 ${settings.pages} 页，接近章末时包含下一章，也会使用移动数据。"
+        },Modifier.padding(top=8.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -31,6 +31,26 @@ class ReaderLoadingTest {
             assertEquals(pages,offline.get("1",ch))
         } finally { scope.cancel() }
     }
+    @Test fun preloadPreferencesAndWindowsHonorThreeFourFiveAndWifi() {
+        for(size in 3..5) {
+            assertEquals(size,ReaderPreloadWindow.following(0,17,size).size)
+            assertEquals(size-2,ReaderPreloadWindow.nextChapterCount(14,17,size))
+        }
+        assertFalse(PreloadPreferences(enabled=false).allowed(true))
+        assertFalse(PreloadPreferences(wifiOnly=true).allowed(false))
+        assertTrue(PreloadPreferences(wifiOnly=true).allowed(true))
+        assertTrue(PreloadPreferences(wifiOnly=false).allowed(false))
+    }
+    @Test fun abandonedSpeculativeRequestIsCancelledButForegroundWaiterSurvives()=runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        try {
+            var cancelled=false
+            val loader=ReaderChapterLoader(scope,{ _,_ -> try { awaitCancellation() } finally { cancelled=true } },{ _,_ -> null },{},{ false })
+            val waiter=async(start=CoroutineStart.UNDISPATCHED) { loader.get("1",ch) }
+            waiter.cancelAndJoin()
+            assertTrue(cancelled)
+        } finally { scope.cancel() }
+    }
     @Test fun preloadWindowIsBoundedAndCrossesChapterBoundary() {
         assertEquals(listOf(1,2,3,4,5),ReaderPreloadWindow.following(0,17))
         assertEquals(0,ReaderPreloadWindow.nextChapterCount(0,17))
