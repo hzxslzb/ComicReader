@@ -1,0 +1,6 @@
+# Copy to signing.properties and supply your own local keystore.
+# Never commit the real signing.properties or keystore.
+storeFile=signing/your-release.jks
+storePassword=REPLACE_WITH_YOUR_PASSWORD
+keyAlias=REPLACE_WITH_YOUR_ALIAS
+keyPassword=REPLACE_WITH_YOUR_PASSWORD

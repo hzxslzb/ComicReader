@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ComicReader</string>
+    <color name="comicreader_sky">#F4EBDD</color>
+</resources>

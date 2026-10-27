@@ -1,0 +1,123 @@
+<div align="center">
+  <img src="assets/branding/comicreader-flying-manga.png" width="128" alt="ComicReader 构成主义漫画书图标" />
+  <h1>ComicReader</h1>
+  <p>原生 Android 漫画阅读器 · 在线与离线阅读 · 为折叠屏适配</p>
+  <p>Android 8.0+ · Kotlin · Jetpack Compose · Material 3</p>
+</div>
+
+ComicReader 将漫画柜移动站的搜索、分类与章节内容呈现在原生界面中，不加载网页广告或执行远程 JavaScript。米白与松绿的浅色主题、深墨夜间主题，让手机外屏与展开大屏都能舒适阅读。
+
+**当前版本：1.3.0** · [下载与更新](https://github.com/hzxslzb/ComicReader/releases/latest) · [更新日志](CHANGELOG.md) · [1.3.0 发布公告](docs/releases/v1.3.0.md) · [测试记录](TESTING.md)
+
+## 下载与安装
+
+在 [GitHub Releases](https://github.com/hzxslzb/ComicReader/releases) 下载 `ComicReader-1.3.0.apk`，传到 Android 手机并安装。`Source code` 是源码包，不能直接安装。Release 同时提供 SHA-256 校验文件。
+
+**已安装旧版：直接覆盖安装，不要先卸载或清除数据。** 正式版本沿用包名 `com.arnolee.moye` 和同一签名，保留书架、阅读进度、设置与离线下载。1.3.0 沿用数据库版本 1 及原下载目录，已验证 1.2.1 → 1.3.0 覆盖升级的数据保留。
+
+自行签名的构建不能覆盖官方签名包。Debug 使用独立包名 `com.arnolee.moye.debug`，可以与正式版共存。卸载会删除本地数据；目前没有跨设备同步或导入导出。
+
+## 界面预览
+
+<p align="center">
+  <img src="docs/images/home.png" width="30%" alt="浅色主题首页与热门漫画" />
+  <img src="docs/images/categories.png" width="30%" alt="全部分类与题材选择" />
+</p>
+<p align="center">
+  <img src="docs/images/fold-dark.png" width="75%" alt="折叠屏展开后的深色漫画大全" />
+</p>
+
+截图来自 Android 模拟器；作品封面及名称由数据源返回。
+
+## 功能
+
+| 功能 | 支持内容 |
+| --- | --- |
+| 全站搜索 | 关键词、分页、搜索历史、漫画柜链接打开，范围跟随站内搜索，并不限于某一部漫画 |
+| 发现与分类 | 首页精选、热门连载、经典完结、漫迷推荐、最新上架、全部分类、最近更新、漫画大全、排行榜 |
+| 筛选与排序 | 动态读取原站分类；漫画大全按添加时间、更新时间或浏览次数排序 |
+| 书架与历史 | 收藏、最近阅读、继续阅读；每本漫画独立保存最近章节和页码 |
+| 在线阅读 | 上下连续滚动、从左到右翻页、日漫从右到左翻页、页码跳转、目录与上下章 |
+| 缩放 | 双指捏合、双击，连续滚动支持 1–4 倍；底部独立“恢复默认”按钮不遮挡漫画 |
+| 末页切章 | 到达最后一页后，再主动向下一页滑动一次进入下一章 |
+| 本书阅读记录 | 详情页查看本书各章最近读到的页码和时间，点击恢复 |
+| 下载与离线 | 单章、多选及整本队列，暂停、继续、失败重试、进度通知，完整下载后断网阅读 |
+| 主题 | 浅色、深色、跟随系统；阅读时也可切换 |
+| 折叠屏 | 自适应网格、侧边导航、详情分栏、宽屏双页，展开与收起保留准确页码 |
+
+### 阅读手势
+
+- 连续滚动：上下滑动阅读，双指或双击缩放，放大后可横向拖动；点“恢复默认”复位尺寸及横向位置。
+- 普通翻页：向左为下一页；日漫模式向右为下一页。
+- **章节末尾需要另一次主动滑动才切章**：纵向上滑、普通模式左滑、日漫模式右滑。到达末页的那次手势、惯性、双指缩放及放大横拖不会触发切章；最后一章停留原处。
+- 每部漫画、每章分别保存断点；下一章有历史则续读，没有历史从第一页开始。纵向位置精确到页码，不保存页内像素偏移或缩放倍率。
+
+### Galaxy Z Fold7
+
+按当前窗口宽高适配，而非固定机型：窄屏底部导航，宽屏侧边导航；宽度达到 600 dp 时支持分栏和自动双页，低高度窗口会相应收紧布局。双页模式封面单独展示，日漫页序同步反转；连续滚动始终为单列，默认列宽上限 720 dp。
+
+已在模拟器覆盖 Fold7 外屏 1080×2520、内屏 1968×2184 的比例，以及横屏、窄分屏和显示缩放。尚未进行实体 Fold7 验证；完整矩阵见 [TESTING.md](TESTING.md)。
+
+## 数据源与本地数据
+
+当前数据源为 [漫画柜移动站](https://m.manhuagui.com/)，不需要应用账号或自建服务器。应用不集成广告或分析 SDK，也不上传书架和阅读历史。
+
+- 搜索及漫画可用范围由站点决定。分类为原站支持的单项筛选；不组合站点不支持的交叉条件。
+- 最近更新与排行榜目前各提供 5 页、100 本；漫画大全按站点返回的总页数加载。分类数量等可能随站点变化。
+- 发现、搜索与未下载章节需要联网；完成下载的章节使用本地文件。临时图片缓存与永久下载分离，删除下载不会删除收藏和阅读记录。
+- 页面结构或图片地址规则变化时可能需要更新解析器；网络错误可重试，不自动绕过验证码或登录。章节自带的版权页、水印和宣传页按原图呈现。
+- 仓库与安装包不附带漫画内容库；请尊重作品作者、版权方及数据源的使用规则。
+
+## 从源码构建
+
+需要 **JDK 17、Android SDK 35**，最低 Android 8.0（API 26）。项目自带 Gradle 8.9 Wrapper，首次构建需要网络下载依赖。
+
+1. 克隆仓库（`git clone https://github.com/hzxslzb/ComicReader.git`），用 Android Studio 打开项目根目录，安装 SDK 35 并完成 Gradle 同步。
+2. 命令行使用 `ANDROID_HOME`，或在未跟踪的 `local.properties` 中设置 `sdk.dir=/your/android/sdk`。
+3. 在 macOS / Linux 运行：
+
+```sh
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest :app:lintDebug
+```
+
+Debug APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
+
+### 自行构建签名包
+
+将 `signing.properties.example` 复制为 `signing.properties`，填写自己的 keystore 路径、别名与密码，然后运行：
+
+```sh
+./gradlew :app:assembleRelease
+```
+
+生成文件位于 `app/build/outputs/apk/release/`。官方签名私钥不在仓库中；使用自己的密钥时请安全备份，后续覆盖升级需保持相同包名及签名。不要提交真实签名配置或 keystore。
+
+### 测试
+
+```sh
+./gradlew :app:testDebugUnitTest :app:lintDebug
+# 仅在专用测试模拟器上运行设备测试
+./gradlew :app:connectedDebugAndroidTest
+```
+
+设备测试会更改模拟器显示尺寸、网络开关和测试应用状态，部分流程依赖真实数据源。1.3.0 已通过 20 项 JVM 测试和 6 项设备测试；Lint 为 0 errors、15 项既有 warnings。测试范围和限制见 [TESTING.md](TESTING.md)。
+
+## 项目结构
+
+```text
+app/src/main/          应用代码、Android 清单与资源
+app/src/test/          JVM 测试与 HTML 解析样本
+app/src/androidTest/   阅读、下载、缩放、折叠与数据库设备测试
+assets/branding/      图标原稿与生成说明
+docs/                 实现说明、截图与发布公告
+gradle/               Gradle Wrapper
+```
+
+主要实现：Kotlin + Jetpack Compose + Material 3；OkHttp 请求、Jsoup 解析、Coil 图片加载；SQLite 保存收藏、章节进度和下载任务，SharedPreferences 保存偏好。具体模块职责见 [实现说明](docs/IMPLEMENTATION.md)。
+
+## 反馈与致谢
+
+提交 Issue 时请提供 App 版本、Android 版本、设备型号、阅读模式、复现步骤，以及有问题的公开漫画或章节链接；不要上传个人数据库、签名文件或账号凭据。
+
+功能设计参考 [Ehviewer_CN_SXJ](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) 的阅读与下载体验。ComicReader 的数据源解析、界面和存储在本项目中实现；漫画内容归相应权利人所有。图标采用构成主义几何风格，原稿及生成说明位于 [assets/branding](assets/branding)。

@@ -1,0 +1,3 @@
+<resources><style name="Theme.Moye" parent="android:style/Theme.Material.Light.NoActionBar">
+ <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">true</item><item name="android:colorAccent">#356653</item><item name="android:windowActionModeOverlay">true</item><item name="android:windowBackground">#F6F5EF</item>
+</style></resources>
