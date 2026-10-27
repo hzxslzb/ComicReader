@@ -158,7 +158,7 @@ import kotlinx.coroutines.launch
             HorizontalDivider(Modifier.padding(vertical=12.dp))
             Text("主题",style=MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf("light" to "浅色","dark" to "深色","system" to "跟随系统").forEach { (value,label) -> FilterChip(vm.theme==value,{ vm.setAppearance(value) },{ Text(label) }) } }
-            Text("轻点图片隐藏工具栏；双击或双指缩放图片。\n上下滚动放大后仍可上下阅读、左右拖动；底栏可一键恢复默认尺寸，按钮不遮挡漫画。\n到达章节末尾后，再按下一页方向滑动一次即可进入下一章。\n折叠、展开和旋转时保留当前章节与页码。",Modifier.padding(top=14.dp,bottom=24.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("轻点图片隐藏工具栏；双击或双指缩放图片。\n上下滚动放大后仍可上下阅读、左右拖动；底栏可一键恢复默认尺寸，按钮不遮挡漫画。\n到达章节末尾后，再按下一页方向滑动一次即可进入下一章。\n自动预加载后续 5 页，接近章末时包含下一章；使用临时缓存，也会消耗移动数据。\n折叠、展开和旋转时保留当前章节与页码。",Modifier.padding(top=14.dp,bottom=24.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -276,9 +276,8 @@ import kotlinx.coroutines.launch
     }
     DisposableEffect(Unit) { onDispose { onZoom(1f) } }
     LaunchedEffect(zoomReset) { scale=1f;offset=Offset.Zero;onZoom(1f) }
-    val local=vm.store.pageFile(p.mangaId,p.chapter.id,index)
     val decodeWidth=if(vertical) 2400 else width.coerceIn(640,2400)
-    val request=remember(p,index,retry,decodeWidth) { ImageRequest.Builder(context).data(if(local.isFile && local.length()>0) local else p.url(index,listOf("eu","eu1","eu2")[retry%3])).addHeader("Referer",p.referer).size(decodeWidth,4096).crossfade(false).build() }
+    val request=remember(p,index,retry,decodeWidth) { ReaderImages.request(vm.app,p,index,decodeWidth,retry) }
     Box(Modifier.testTag("page-$index").semantics { stateDescription=if(error) "error" else if(loading) "loading" else "loaded" }.fillMaxWidth().then(if(vertical) Modifier.aspectRatio(ratio) else Modifier.fillMaxHeight()).clip(RoundedCornerShape(0.dp)).onSizeChanged { width=it.width;height=it.height }
         .then(if(vertical) Modifier else Modifier.pointerInput(Unit) { detectTapGestures(onTap={ onTap() },onDoubleTap={ scale=if(scale>1f)1f else 2.5f;offset=Offset.Zero;onZoom(scale) }) }
             .transformable(transform,canPan={ scale>1f })),contentAlignment=Alignment.Center) {

@@ -1,7 +1,11 @@
 package com.arnolee.moye
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -48,6 +52,49 @@ class MangaSource(val client: OkHttpClient = OkHttpClient.Builder().connectTimeo
         if(body.contentLength()>4_000_000) throw IOException("页面过大")
         body.string()
     }
+    private class HttpFailure(val status: Int): IOException(
+        when(status) {
+            403 -> "站点暂时拒绝访问（403），请稍后重试"
+            404 -> "章节不存在或已被移除（404）"
+            429 -> "请求过于频繁（429），请稍后重试"
+            else -> "章节网络请求失败（$status），请重试"
+        }
+    )
+    private suspend fun chapterText(request: Request): String {
+        repeat(3) { attempt ->
+            try {
+                return suspendCancellableCoroutine { continuation ->
+                    val call=client.newCall(request)
+                    continuation.invokeOnCancellation { call.cancel() }
+                    call.enqueue(object: Callback {
+                        override fun onFailure(call: Call,e: IOException) {
+                            if(continuation.isActive) continuation.resumeWithException(e)
+                        }
+                        override fun onResponse(call: Call,response: Response) {
+                            try {
+                                val value=response.use { r ->
+                                    if(!r.isSuccessful) throw HttpFailure(r.code)
+                                    val body=r.body ?: throw IOException("服务器返回为空")
+                                    if(body.contentLength()>4_000_000) throw IOException("章节页面过大")
+                                    body.string()
+                                }
+                                if(continuation.isActive) continuation.resume(value)
+                            } catch(e: Exception) {
+                                if(continuation.isActive) continuation.resumeWithException(e)
+                            }
+                        }
+                    })
+                }
+            } catch(e: IOException) {
+                currentCoroutineContext().ensureActive()
+                // Do not retry access restrictions, missing chapters, or invalid TLS certificates.
+                if(attempt==2 || (e is HttpFailure && e.status !in listOf(408,500,502,503,504)) ||
+                    e is javax.net.ssl.SSLHandshakeException || e is javax.net.ssl.SSLPeerUnverifiedException) throw e
+                delay(350L*(attempt+1))
+            }
+        }
+        error("Unreachable")
+    }
     fun request(url: String, referer: String = "$BASE/") = Request.Builder().url(url).header("User-Agent",UA).header("Referer",referer)
     suspend fun search(keyword: String,page: Int=1): SearchResult = withContext(Dispatchers.IO) {
         val url="$BASE/s/${URLEncoder.encode(keyword.trim(),"UTF-8").replace("+","%20")}.html"
@@ -58,7 +105,7 @@ class MangaSource(val client: OkHttpClient = OkHttpClient.Builder().connectTimeo
     suspend fun detail(id: String): Manga = withContext(Dispatchers.IO) { require(id.matches(Regex("\\d+"))); parseDetail(id,text(request("$BASE/comic/$id/").build())) }
     suspend fun pages(bookId: String,chapter: Chapter): ChapterPages = withContext(Dispatchers.IO) {
         require(bookId.matches(Regex("\\d+")) && chapter.id.matches(Regex("\\d+")))
-        ChapterDecoder.decode(bookId, chapter, text(request("$BASE/comic/$bookId/${chapter.id}.html").build()))
+        ChapterDecoder.decode(bookId, chapter, chapterText(request("$BASE/comic/$bookId/${chapter.id}.html","$BASE/comic/$bookId/").build()))
     }
 }
 

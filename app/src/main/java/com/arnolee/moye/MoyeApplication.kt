@@ -27,7 +27,7 @@ class MoyeApplication : Application(), ImageLoaderFactory {
                         val response=chain.proceed(request.newBuilder().url(request.url.newBuilder().host(host).build()).build())
                         if(response.isSuccessful) { result=response;break }
                         failure=IOException("图片加载失败（${response.code}）");response.close()
-                    } catch(e: IOException) { failure=e }
+                    } catch(e: IOException) { if(chain.call().isCanceled()) throw e;failure=e }
                 }
                 result ?: throw (failure ?: IOException("图片服务器暂时不可用"))
             }

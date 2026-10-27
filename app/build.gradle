@@ -8,7 +8,7 @@ if (rootProject.file('signing.properties').exists()) rootProject.file('signing.p
 android {
  namespace 'com.arnolee.moye'
  compileSdk 35
- defaultConfig { applicationId 'com.arnolee.moye'; minSdk 26; targetSdk 35; versionCode 6; versionName '1.3.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ defaultConfig { applicationId 'com.arnolee.moye'; minSdk 26; targetSdk 35; versionCode 7; versionName '1.3.1'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
  buildFeatures { compose true; buildConfig true }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = '17' }
